@@ -1,0 +1,135 @@
+local/chatbot/                              # Moodle plugin (local_chatbot) — UI + FastAPI RAG backend
+│
+├── version.php                             # Plugin version and Moodle compatibility
+├── settings.php                            # Admin: FastAPI URL, shared secret, welcome message
+├── externallib.php                         # Webservice API (send_message, rooms, history)
+├── lib.php                                 # Chat room and message DB helpers
+├── quiz_pdf.php                            # Quiz PDF download proxy to FastAPI /quiz/pdf
+├── styles.css                              # Chat popup stylesheet
+├── explanation.txt                         # Chapter A module documentation
+├── fileexplanation.txt                     # Per-file function reference (RAG pipeline)
+├── datalifecycle.txt                       # Data flow: embed → cache → retrieve → reply
+├── MOODLE_OLLAMA_CONNECTION.md             # Moodle ↔ Ollama wiring and env notes
+│
+├── amd/
+│   ├── src/
+│   │   └── popup.js                        # Chat widget UI, history, attachments, Ajax calls
+│   └── build/
+│       └── popup.min.js                    # Minified AMD build of popup.js
+│
+├── classes/
+│   ├── fastapi_client.php                  # HTTP client: Moodle POST → FastAPI /chat
+│   ├── hook_callbacks.php                  # Inject UI mount point, CSS, and AMD init
+│   ├── event_observer.php                  # Moodle event hooks (course/content changes)
+│   └── privacy/
+│       └── provider.php                    # GDPR export and deletion for chat messages
+│
+├── db/
+│   ├── install.xml                         # Tables: local_chatbot_room, local_chatbot_message
+│   ├── upgrade.php                         # Schema migrations across plugin versions
+│   ├── services.php                        # Register local_chatbot_* webservices
+│   ├── hooks.php                           # Register output hook callbacks
+│   └── events.php                          # Register event_observer callbacks
+│
+├── docker/                                 # Optional container stack (RAG + Ollama + Redis + MinIO)
+│   ├── docker-compose.yml                  # Service definitions and healthchecks
+│   ├── Dockerfile                          # RAG service image build
+│   ├── entrypoint.sh                       # Container startup script
+│   ├── start.sh                            # Helper to bring stack up
+│   ├── .dockerignore
+│   ├── .env                                # Docker env (ports, Ollama num_ctx, MySQL socket)
+│   ├── .env.example
+│   ├── env.example
+│   ├── README.md                           # Docker setup (English)
+│   ├── README.id.md                        # Docker setup (Indonesian)
+│   └── scripts/
+│       └── ollama-init.sh                  # Pull Ollama models on first run
+│
+├── model/
+│   └── Modelfile                           # Custom Ollama model template (qwen3_q4km)
+│
+├── lang/
+│   └── en/
+│       └── local_chatbot.php               # UI and error language strings
+│
+└── rag_service/                            # Independent Python FastAPI backend (port 8787)
+    ├── main.py                             # Microservice entry: mount API routers
+    ├── bootstrap.py                        # Python path setup for local packages
+    ├── config.py                           # Settings from .env (Ollama, MySQL, Chroma, Redis)
+    ├── query_routing.py                    # Skip course index for company-only queries
+    ├── text_format.py                      # Clean model output (prettify_reply)
+    ├── requirements.txt                    # Python dependencies
+    ├── README.txt                          # Backend setup and run instructions
+    ├── .env                                # Runtime config (not committed in production)
+    ├── chroma_db/                          # Persistent Chroma vector store data
+    ├── .venv/                              # Python virtual environment (local dev)
+    │
+    ├── api/
+    │   ├── models.py                       # Pydantic models (ChatRequest, ChatResponse)
+    │   ├── routes_chat.py                  # POST /chat, history delete; chat(), _finish()
+    │   ├── routes_admin.py                 # GET /health, POST /rebuild-index, /quiz/pdf
+    │   └── metrics_util.py                 # Response time and token metrics
+    │
+    ├── services/
+    │   ├── chat_service.py                 # RAG pipeline (answer_question)
+    │   ├── quiz_service.py                 # Quiz generate, revise, intent, PDF helpers
+    │   ├── summary_service.py              # Course summarize (generate_course_summary)
+    │   └── index_service.py                # Sinarmas index rebuild trigger
+    │
+    ├── retrieval/
+    │   ├── chroma_store.py                 # Index, ensure_course_indexed, chroma_search
+    │   ├── course_retriever.py             # Context for quiz and summarize
+    │   ├── sinarmas_retriever.py           # Company knowledge vector search
+    │   └── content_filter.py               # Filter learning vs admin/instruction chunks
+    │
+    ├── infrastructure/
+    │   ├── ollama_client.py                # get_embedding(), chat_completion()
+    │   ├── redis_store.py                  # Conversation history and semantic cache
+    │   ├── moodle_db.py                    # Load course text from Moodle MySQL + files
+    │   ├── minio_client.py                 # Optional MinIO PDF storage
+    │   └── llm_result.py                   # LLM result struct and metrics merge
+    │
+    ├── domain/
+    │   ├── chunking.py                     # Text chunking with overlap for indexing
+    │   └── guardrails.py                   # Block out-of-scope code generation requests
+    │
+    ├── integrations/
+    │   ├── ocr_client.py                   # Attachment and course file text extraction
+    │   └── __init__.py
+    │
+    ├── prompts/
+    │   ├── chatbot_prompts.py              # build_system_prompt, summary prompts
+    │   ├── quiz_prompts.py                 # Quiz JSON generation prompts
+    │   └── __init__.py
+    │
+    ├── scripts/
+    │   ├── build_sinarmas_index.py         # Build sinarmas_knowledge collection
+    │   ├── inspect_chroma.py               # Inspect Chroma collections (ops)
+    │   ├── migrate_legacy_collections.py   # Migrate old Chroma collection names
+    │   ├── rename_to_moodle_course.py      # Rename collection to moodle_course
+    │   ├── warm_course_index.py            # Pre-index courses (reduce cold-start latency)
+    │   └── __init__.py
+    │
+    └── tests/
+        ├── test_content_filter.py          # Unit tests for content_filter
+        ├── test_chunking.py                # Unit tests for chunking
+        ├── test_quiz_intent.py             # Unit tests for quiz intent detection
+        └── test_query_routing.py           # Unit tests for query_routing
+
+
+────────────────────────────────────────────────────────────────────────────────
+Core request flow (general chat)
+────────────────────────────────────────────────────────────────────────────────
+
+  popup.js
+    → externallib.php :: send_message()
+    → fastapi_client.php :: send_chat()
+    → api/routes_chat.py :: chat()
+    → services/chat_service.py :: answer_question()
+         → infrastructure/ollama_client.py :: get_embedding(), chat_completion()
+         → retrieval/chroma_store.py :: ensure_course_indexed(), chroma_search()
+         → prompts/chatbot_prompts.py :: build_system_prompt()
+    → routes_chat.py :: _finish() → JSON ChatResponse
+    → Moodle saves message → popup.js displays reply
+
+  Full architecture: see ../architectural.txt

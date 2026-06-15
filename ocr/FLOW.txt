@@ -1,0 +1,87 @@
+================================================================================
+LOCAL OCR — DOCUMENT PROCESSING FLOW
+================================================================================
+
+Owner: OCR team (your friend). This folder holds file ingestion, text extraction,
+and vision-OCR fallbacks. The Moda chatbot (local/chatbot) calls into this package;
+it does not duplicate extraction logic.
+
+================================================================================
+WHEN OCR RUNS
+================================================================================
+
+1. COURSE INDEXING (background, on first chat / course update)
+   chatbot/rag_service/moodle_course.py
+     → reads Moodle dataroot/filedir via MySQL mdl_files
+     → ocr.course_files.extract_course_file_text(...)
+        • PDF/DOCX/PPTX/XLSX/TXT/CSV/code via ocr.text_extract
+        • Scanned PDFs: render pages → vision model OCR (callback from chatbot)
+
+2. USER ATTACHMENTS (real-time, per /chat message)
+   chatbot/rag_service/rag_engine.py
+     → integrations/ocr_client.split_user_attachments(...)
+        • Images → base64 for Ollama vision (chat path, not stored in Chroma)
+        • Documents → ocr.text_extract + PDF page images if text is empty
+
+3. SINARMAS COMPANY PDFs (batch index, optional)
+   chatbot/rag_service/build_sinarmas_index.py
+     → ocr.text_extract.extract_text_from_bytes for each PDF
+
+================================================================================
+PACKAGE LAYOUT
+================================================================================
+
+local/ocr/
+  __init__.py          Public API (re-exports)
+  text_extract.py      extract_text_from_bytes, pdf_to_images_b64
+  attachments.py       split_attachments (user uploads)
+  course_files.py      extract_course_file_text (+ vision OCR hook)
+
+================================================================================
+INTEGRATION CONTRACT (for chatbot)
+================================================================================
+
+Python path: chatbot/rag_service/bootstrap.py adds `local/` to sys.path so:
+
+  from ocr.text_extract import extract_text_from_bytes
+  from ocr.attachments import split_attachments
+  from ocr.course_files import extract_course_file_text
+
+Chatbot should use ONE facade for debugging:
+
+  from integrations.ocr_client import (...)
+
+Vision OCR for scanned PDFs requires the chatbot to pass a callback that calls
+Ollama (ollama_http.chat_completion) — OCR stays free of chatbot config/HTTP.
+
+================================================================================
+FUTURE WORK (OCR team)
+================================================================================
+
+  - Replace vision-OCR fallback with dedicated OCR models / HTTP service
+  - Add local/ocr/service/ FastAPI microservice if you want process isolation
+  - Add tests under local/ocr/tests/
+  - requirements.txt for OCR-only dependencies (pypdf, pymupdf, python-docx, …)
+
+================================================================================
+DATA FLOW (ASCII)
+================================================================================
+
+  [Moodle file on disk]     [User attachment in /chat]
+           |                          |
+           v                          v
+   moodle_course.py            rag_engine.py
+           |                          |
+           +----------+---------------+
+                      v
+            integrations/ocr_client.py
+                      v
+                 local/ocr/*
+                      |
+           +----------+----------+
+           v                     v
+    text_extract            attachments
+    (native parse)          (images → vision)
+           |
+           v (empty PDF text)
+    course_files + vision_ocr callback → plain text → Chroma / prompt
