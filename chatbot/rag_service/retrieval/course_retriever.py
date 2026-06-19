@@ -12,7 +12,9 @@ not of Chroma state.
 """
 
 from __future__ import annotations
-
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import Settings, settings
 from infrastructure.ollama_client import get_embedding
 from retrieval.chroma_store import (
@@ -26,6 +28,7 @@ from retrieval.chroma_store import (
     _get_chat_collection,
     _get_course_documents,
 )
+ 
 
 # Sentinel used by trim_excerpt_context_for_llm to locate the excerpt body.
 _EXCERPT_MARKER = "=== LEARNING MATERIAL (excerpts) ===\n"
