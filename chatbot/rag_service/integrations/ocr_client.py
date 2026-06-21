@@ -51,7 +51,7 @@ def build_vision_ocr_fn(settings: Settings) -> VisionOcrFn:
         settings, "ollama_chat_model", ""
     )
     system = (
-        "You are an OCR engine. Extract all readable text from the provided image(s). "
+        "You are a Vision engine. Extract all readable text from the provided image(s). "
         "Return only the extracted text, as plain text, preserving line breaks when possible."
     )
 
