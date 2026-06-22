@@ -237,48 +237,69 @@ def answer_question(
     course_result: dict[str, Any] = {}
     sinarmas_hits: list[str] = []
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        course_future = pool.submit(
-            _retrieve_course_context,
-            st,
-            course_id,
-            uid,
-            query_vec,
-            question,
-            attach_text,
-            images_b64,
-        )
-        sinarmas_future = pool.submit(
-            search_sinarmas,
-            query_vec,
-            n=int(getattr(st, "sinarmas_top_k", 2) or 2),
-        )
-        try:
-            (
-                _skip,
-                course_context_body,
-                coursename,
-                primary_ref_id,
-                primary_ref_name,
-                used_db_course,
-            ) = course_future.result()
-            course_result = {
-                "body": course_context_body,
-                "coursename": coursename,
-                "primary_ref_id": primary_ref_id,
-                "primary_ref_name": primary_ref_name,
-                "used_db_course": used_db_course,
-            }
-        except Exception:
-            course_future.cancel()
-            raise
-        sinarmas_hits = sinarmas_future.result()
+    # with ThreadPoolExecutor(max_workers=2) as pool:
+    #     course_future = pool.submit(
+    #         _retrieve_course_context,
+    #         st,
+    #         course_id,
+    #         uid,
+    #         query_vec,
+    #         question,
+    #         attach_text,
+    #         images_b64,
+    #     )
+    #     sinarmas_future = pool.submit(
+    #         search_sinarmas,
+    #         query_vec,
+    #         n=int(getattr(st, "sinarmas_top_k", 2) or 2),
+    #     )
+    #     try:
+    #         (
+    #             _skip,
+    #             course_context_body,
+    #             coursename,
+    #             primary_ref_id,
+    #             primary_ref_name,
+    #             used_db_course,
+    #         ) = course_future.result()
+    #         course_result = {
+    #             "body": course_context_body,
+    #             "coursename": coursename,
+    #             "primary_ref_id": primary_ref_id,
+    #             "primary_ref_name": primary_ref_name,
+    #             "used_db_course": used_db_course,
+    #         }
+    #     except Exception:
+    #         course_future.cancel()
+    #         raise
+    #     sinarmas_hits = sinarmas_future.result()
 
-    course_context_body = course_result.get("body", "")
-    coursename = course_result.get("coursename", "this course")
-    primary_ref_id = course_result.get("primary_ref_id")
-    primary_ref_name = course_result.get("primary_ref_name")
-    used_db_course = bool(course_result.get("used_db_course"))
+    # course_context_body = course_result.get("body", "")
+    # coursename = course_result.get("coursename", "this course")
+    # primary_ref_id = course_result.get("primary_ref_id")
+    # primary_ref_name = course_result.get("primary_ref_name")
+    # used_db_course = bool(course_result.get("used_db_course"))
+    (
+    _skip,
+    course_context_body,
+    coursename,
+    primary_ref_id,
+    primary_ref_name,
+    used_db_course,
+    ) = _retrieve_course_context(
+        st,
+        course_id,
+        uid,
+        query_vec,
+        question,
+        attach_text,
+        images_b64,
+    )
+
+    sinarmas_hits = search_sinarmas(
+        query_vec,
+        n=int(getattr(st, "sinarmas_top_k", 2) or 2),
+    )
 
     context_parts: list[str] = []
     if str(course_context_body).strip():

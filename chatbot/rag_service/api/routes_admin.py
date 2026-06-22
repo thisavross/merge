@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import Response
 
-from api.models import CourseReindexRequest, QuizPdfRequest
+from api.models import CourseReindexRequest, IngestPdfRequest, QuizPdfRequest
 from infrastructure.redis_store import clear_all_semantic_caches, clear_semantic_cache, redis_health_check
-from services.index_service import queue_course_reindex, run_sinarmas_rebuild, warm_course_index
+from services.index_service import ingest_uploaded_pdf, queue_course_reindex, run_sinarmas_rebuild, warm_course_index
 from services.quiz_service import quiz_from_json, quiz_to_pdf
 
 router = APIRouter()
@@ -92,6 +92,36 @@ def reindex_course(
 
     scheduled = queue_course_reindex(cid)
     return {"status": "scheduled" if scheduled else "already_running", "course_id": cid}
+
+
+@router.post("/admin/ingest/pdf")
+def ingest_pdf(body: IngestPdfRequest) -> dict:
+    """Index one PDF via local/ocr/extract.py into moodle_chat + moodle_course."""
+    pdf_path = body.pdf_path.strip()
+    if not pdf_path:
+        raise HTTPException(status_code=400, detail="pdf_path is required")
+
+    try:
+        result = ingest_uploaded_pdf(
+            pdf_path,
+            course_id=body.course_id,
+            source_type=body.source_type,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    cache_keys_cleared = 0
+    if body.course_id is not None and int(body.course_id) > 1:
+        cache_keys_cleared = clear_semantic_cache(int(body.course_id))
+
+    return {
+        "status": result.get("status", "ok"),
+        "course_id": body.course_id,
+        "cache_keys_cleared": cache_keys_cleared,
+        **result,
+    }
 
 
 @router.get("/health")

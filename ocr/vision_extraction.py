@@ -1,4 +1,4 @@
-﻿# import subprocess
+# import subprocess
 # import sys
 # import time
 # import requests
@@ -141,20 +141,39 @@
 #             lines.append(row_text)
 #     return "\n".join(lines)
 
+import os
 import subprocess
 import sys
 import time
-import requests
-import os
+from urllib.parse import urlparse
 
+import requests
 from ollama import Client
 
 
-OLLAMA_HOST = "http://127.0.0.1:11434"
-QWEN_MODEL = "qwen25vl-ai2d-vision"
+def _ollama_base_url() -> str:
+    return (
+        os.getenv("OLLAMA_BASE_URL")
+        or os.getenv("OLLAMA_HOST")
+        or "http://127.0.0.1:11434"
+    ).rstrip("/")
 
 
-_ollama_client = None
+def _vision_model_name() -> str:
+    return (
+        os.getenv("OLLAMA_EXTRACT_VISION_MODEL")
+        or os.getenv("OLLAMA_VISION_MODEL")
+        or "qwen25vl-ai2d-vision"
+    )
+
+
+def _is_local_ollama_host(base_url: str) -> bool:
+    hostname = (urlparse(base_url).hostname or "").lower()
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+_ollama_client: Client | None = None
+_ollama_client_host: str | None = None
 
 
 # ============================================================
@@ -163,13 +182,16 @@ _ollama_client = None
 
 
 def ensure_ollama_running() -> bool:
+    base_url = _ollama_base_url()
 
     try:
-        requests.get(OLLAMA_HOST, timeout=2)
-
+        requests.get(base_url, timeout=2)
         return True
-
     except Exception:
+        if not _is_local_ollama_host(base_url):
+            print(f"[Vision] Remote Ollama not reachable at {base_url}")
+            return False
+
         print("Starting Ollama...")
 
         try:
@@ -193,7 +215,7 @@ def ensure_ollama_running() -> bool:
                 time.sleep(1)
 
                 try:
-                    requests.get(OLLAMA_HOST, timeout=2)
+                    requests.get(base_url, timeout=2)
 
                     print("Ollama started")
 
@@ -211,15 +233,16 @@ def ensure_ollama_running() -> bool:
             return False
 
 
-def get_client():
+def get_client() -> Client:
+    global _ollama_client, _ollama_client_host
 
-    global _ollama_client
-
-    if _ollama_client is None:
+    base_url = _ollama_base_url()
+    if _ollama_client is None or _ollama_client_host != base_url:
         if not ensure_ollama_running():
             raise RuntimeError("Ollama unavailable")
 
-        _ollama_client = Client(host=OLLAMA_HOST)
+        _ollama_client = Client(host=base_url)
+        _ollama_client_host = base_url
 
     return _ollama_client
 
@@ -311,7 +334,7 @@ def extract_with_qwenvl(
         client = get_client()
 
         response = client.chat(
-            model=QWEN_MODEL,
+            model=_vision_model_name(),
             messages=[{"role": "user", "content": prompt, "images": [image_path]}],
             options={"temperature": 0, "num_ctx": num_ctx},
         )

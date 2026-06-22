@@ -22,11 +22,14 @@ from ocr.vision_extraction import (
 )
 from ultralytics import YOLO
 
+_OCR_ROOT = Path(__file__).resolve().parent
+_YOLO_MODEL = _OCR_ROOT / "model" / "table_det.pt"
+
 # ---------------------------------------------------------------------------
 # Model / converter setup
 # ---------------------------------------------------------------------------
 
-table_detector = YOLO("model/table_det.pt")
+table_detector = YOLO(str(_YOLO_MODEL))
 
 tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-small-en-v1.5")
 

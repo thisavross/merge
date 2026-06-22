@@ -62,3 +62,16 @@ class CourseReindexRequest(BaseModel):
         False,
         description="If true, block until indexing finishes. Default: background job.",
     )
+
+
+class IngestPdfRequest(BaseModel):
+    pdf_path: str = Field(..., min_length=1, description="Absolute path to PDF on disk")
+    course_id: int | None = Field(
+        None,
+        ge=0,
+        description="Moodle course_id to associate with chunks (optional)",
+    )
+    source_type: str = Field(
+        "student_upload",
+        description='Chunk metadata source_type, e.g. "student_upload" or "sinarmas"',
+    )
