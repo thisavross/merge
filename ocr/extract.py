@@ -15,7 +15,7 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from transformers import AutoTokenizer
 
-from vision_extraction import (
+from ocr.vision_extraction import (
     extract_with_qwenvl,
     markdown_table_to_text,
     ensure_ollama_running,
@@ -39,6 +39,47 @@ pipeline_options.images_scale = 1.0
 converter = DocumentConverter(
     format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_options)}
 )
+
+# RapidOCR engine — lazy-loaded on first use since it's only needed as a
+# fallback for pages where Docling failed to read the text layer AND QwenVL
+# also failed/returned nothing. Avoids paying model-load cost on every run.
+_rapidocr_engine = None
+
+
+def get_rapidocr_engine():
+    global _rapidocr_engine
+    if _rapidocr_engine is None:
+        from rapidocr_onnxruntime import RapidOCR
+
+        _rapidocr_engine = RapidOCR()
+    return _rapidocr_engine
+
+
+def run_rapidocr(image_path: str) -> str | None:
+    """
+    Run RapidOCR on a rendered page image and return plain text (lines
+    joined with newlines, reading order as returned by the engine).
+    Returns None if OCR fails or finds no text.
+    """
+    try:
+        engine = get_rapidocr_engine()
+        result, _elapse = engine(image_path)
+
+        if not result:
+            return None
+
+        # result is a list of [box, text, confidence]
+        lines = [entry[1].strip() for entry in result if entry[1] and entry[1].strip()]
+
+        if not lines:
+            return None
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        print(f"[RapidOCR] error: {e}")
+        return None
+
 
 MAX_TOKENS = 450
 TABLE_MAX_TOKENS = 350
@@ -419,16 +460,24 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
             processed_table_pages: set[int] = set()
 
             page_table_boxes = {}
-            # Tracks whether a page produced ANY content (text, table, figure)
-            # so we can detect fully-scanned pages (no text layer at all).
+            # page_has_text: True once the page produced at least one real
+            # TextItem/heading from Docling. This is the signal we use to
+            # decide whether a page needs the OCR fallback — a page can have
+            # a figure (PictureItem) extracted successfully and STILL need
+            # OCR, because Docling failed to read its text layer entirely.
+            # page_has_any_content: True if ANYTHING was extracted (text,
+            # table, or figure) — used only for diagnostics/logging.
+            #
             # Pre-initialized for every page in the batch — a page with zero
-            # Docling items (pure scanned image) would otherwise never be
-            # visited by the iterate_items() loop below.
-            page_has_content: dict[int, bool] = {}
+            # Docling items (pure scanned image, no figure either) would
+            # otherwise never be visited by the iterate_items() loop below.
+            page_has_text: dict[int, bool] = {}
+            page_has_any_content: dict[int, bool] = {}
             try:
                 _batch_doc = fitz.open(batch_file)
                 for _p in range(1, _batch_doc.page_count + 1):
-                    page_has_content[_p] = False
+                    page_has_text[_p] = False
+                    page_has_any_content[_p] = False
                 _batch_doc.close()
             except Exception:
                 traceback.print_exc()
@@ -441,7 +490,8 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                     except Exception:
                         pass
 
-                    page_has_content.setdefault(current_page, False)
+                    page_has_text.setdefault(current_page, False)
+                    page_has_any_content.setdefault(current_page, False)
 
                     # ── Table detection (once per page) ─────────────────────
                     if current_page not in processed_table_pages:
@@ -515,7 +565,8 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                                     )
 
                                     global_chunk_index += 1
-                                    page_has_content[current_page] = True
+                                    page_has_text[current_page] = True
+                                    page_has_any_content[current_page] = True
 
                         finally:
                             _remove_file(page_img)
@@ -542,7 +593,8 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                                 section_stack.pop()
                             section_stack.append(heading)
                             current_section = " > ".join(section_stack)
-                            page_has_content[current_page] = True
+                            page_has_text[current_page] = True
+                            page_has_any_content[current_page] = True
                         continue
 
                     # ── Figure / chart / diagram (non-table picture) ────────
@@ -555,9 +607,7 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                         absolute_page = batch_start_page + current_page
 
                         try:
-                            page_height_pt = get_pdf_page_height(
-                                pdf_path, absolute_page
-                            )
+                            page_height_pt = get_pdf_page_height(pdf_path, absolute_page)
                         except Exception:
                             traceback.print_exc()
                             continue
@@ -617,7 +667,7 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                             )
 
                             global_chunk_index += 1
-                            page_has_content[current_page] = True
+                            page_has_any_content[current_page] = True
 
                         finally:
                             _remove_file(crop)
@@ -646,7 +696,8 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                                 continue
 
                         buffer_text.append(text)
-                        page_has_content[current_page] = True
+                        page_has_text[current_page] = True
+                        page_has_any_content[current_page] = True
 
                 except Exception:
                     traceback.print_exc()
@@ -663,10 +714,17 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                     global_chunk_index,
                 )
 
-            # ── Scanned-page fallback ────────────────────────────────────────
-            # Any page in this batch that produced zero text/table/figure
-            # content is likely a scanned image with no text layer at all.
-            # Render it and run full-page OCR via QwenVL.
+            # ── OCR fallback for pages with no real text ───────────────────────
+            # Triggered when Docling produced ZERO TextItem/heading for a page,
+            # even if a figure/table WAS successfully extracted from it (e.g. a
+            # page with photos + body paragraphs where Docling's text-layer
+            # read failed but PictureItem detection still worked — this is a
+            # distinct case from a page with literally nothing on it).
+            #
+            # Order: QwenVL full-page OCR first (it can read text AND describe
+            # any figures together in one pass — useful since these pages often
+            # mix both). If QwenVL fails or returns empty, fall back to RapidOCR
+            # (lighter, text-only, no dependency on the vision model/Ollama).
             #
             # NOTE: full-page renders use a lower scale than table/figure
             # crops. The model's context window (e.g. 4096 tokens) can be
@@ -674,21 +732,40 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
             # or figure is much smaller than a full page, so it doesn't hit
             # this limit. Tune SCANNED_PAGE_SCALE if your model has a larger
             # context window and you want higher-fidelity OCR.
-            for local_page, has_content in page_has_content.items():
-                if has_content:
+            for local_page, has_text in page_has_text.items():
+                if has_text:
                     continue
 
                 absolute_page = batch_start_page + local_page
                 scan_img = None
+                ocr_text = None
+                ocr_source = None
 
                 try:
                     scan_img = render_page_to_image(
                         pdf_path, absolute_page, scale=SCANNED_PAGE_SCALE
                     )
-                    ocr_text = extract_with_qwenvl(scan_img, task="document")
 
-                    if not ocr_text or not ocr_text.strip():
-                        print(f"[QwenVL FAILED] scanned page={local_page}")
+                    # ── Stage 1: QwenVL full-page OCR ───────────────────────
+                    qwen_text = extract_with_qwenvl(scan_img, task="document")
+                    if qwen_text and qwen_text.strip():
+                        ocr_text = qwen_text.strip()
+                        ocr_source = "qwenvl"
+                    else:
+                        print(
+                            f"[QwenVL FAILED] page={local_page} "
+                            f"— falling back to RapidOCR"
+                        )
+
+                        # ── Stage 2: RapidOCR fallback ───────────────────────
+                        rapid_text = run_rapidocr(scan_img)
+                        if rapid_text and rapid_text.strip():
+                            ocr_text = rapid_text.strip()
+                            ocr_source = "rapidocr"
+                        else:
+                            print(f"[RapidOCR FAILED] page={local_page}")
+
+                    if not ocr_text:
                         continue
 
                     ocr_chunks = chunk_by_tokens([ocr_text])
@@ -707,6 +784,7 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                                     "chunk_index": global_chunk_index + local_idx,
                                     "local_index": local_idx,
                                     "token_count": token_count(chunk),
+                                    "ocr_source": ocr_source,
                                 },
                             }
                         )
@@ -920,9 +998,11 @@ def process_file(file_path: str, batch_size: int = 3) -> dict:
                                    - YOLO + QwenVL table extraction
                                    - Docling PictureItem + QwenVL figure
                                      description (charts, diagrams, photos)
-                                   - PyMuPDF render + QwenVL full-page OCR
-                                     fallback for scanned pages with no
-                                     text layer at all
+                                   - OCR fallback (any page where Docling
+                                     produced zero TextItem/heading, even if
+                                     a figure was still extracted from it):
+                                       1. QwenVL full-page OCR (task=document)
+                                       2. RapidOCR if QwenVL fails/empty
       .docx .pptx .html .md
       .txt .asciidoc .adoc   -> Docling text + heading pipeline
       .xlsx .xlsm            -> Excel sheet reader -> tabular chunks
@@ -930,6 +1010,8 @@ def process_file(file_path: str, batch_size: int = 3) -> dict:
 
     Returns the standard result dict: {doc_id, source_pdf, chunks}.
     Chunk "type" values: "text", "table", "figure", "scanned_ocr".
+    "scanned_ocr" chunks include metadata.ocr_source ("qwenvl" or "rapidocr")
+    indicating which engine produced the text.
     Raises ValueError for unsupported extensions.
     """
     ext = Path(file_path).suffix.lower()
