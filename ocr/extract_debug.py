@@ -287,8 +287,6 @@ def _remove_file(path: str | None) -> None:
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
-
-
 def chunk_by_tokens(
     text_list: list[str],
     max_tokens: int = TEXT_MAX_TOKENS,

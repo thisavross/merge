@@ -470,37 +470,50 @@ def quiz_to_pdf(questions: list[dict], coursename: str, language: str = "id") ->
             "Then add 'fpdf2>=2.7.0' to requirements.txt"
         )
 
+    def _safe(text: str) -> str:
+        """Encode to latin-1 safe string (fpdf2 built-in fonts are latin-1 only)."""
+        return str(text).encode("latin-1", errors="replace").decode("latin-1")
+
+    L_MARGIN = 20
+    R_MARGIN = 20
+
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(left=L_MARGIN, top=20, right=R_MARGIN)
+    pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
+
+    pw = pdf.w - L_MARGIN - R_MARGIN  # usable page width
 
     # Title
     pdf.set_font("Helvetica", "B", 16)
-    title = f"Quiz: {coursename}" if language == "en" else f"Kuis: {coursename}"
-    pdf.cell(0, 12, title, ln=True, align="C")
+    title = _safe(f"Quiz: {coursename}" if language == "en" else f"Kuis: {coursename}")
+    pdf.cell(pw, 12, title, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)
 
     # Subtitle
     pdf.set_font("Helvetica", "", 10)
-    subtitle = (
+    subtitle = _safe(
         f"Total questions: {len(questions)}" if language == "en"
         else f"Jumlah soal: {len(questions)}"
     )
-    pdf.cell(0, 8, subtitle, ln=True, align="C")
+    pdf.cell(pw, 8, subtitle, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(8)
 
-    # Questions (without answers for student version)
-    pdf.set_font("Helvetica", "", 11)
-    for q in questions:
-        # Question text
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.multi_cell(0, 7, f"{q['number']}. {q['question']}")
-        pdf.set_font("Helvetica", "", 11)
+    indent = 8  # left indent for options (in mm)
 
+    for q in questions:
+        # Question number + text
+        pdf.set_font("Helvetica", "B", 11)
+        q_text = _safe(f"{q['number']}. {q.get('question', '')}")
+        pdf.multi_cell(pw, 7, q_text, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "", 11)
         opts = q.get("options", {})
         for key in ["A", "B", "C", "D"]:
             if key in opts:
-                pdf.multi_cell(0, 7, f"    {key}. {opts[key]}")
+                pdf.set_x(L_MARGIN + indent)
+                opt_w = pw - indent
+                pdf.multi_cell(opt_w, 7, _safe(f"{key}. {opts[key]}"), new_x="LMARGIN", new_y="NEXT")
 
         pdf.ln(4)
 
@@ -508,12 +521,15 @@ def quiz_to_pdf(questions: list[dict], coursename: str, language: str = "id") ->
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 14)
     answer_title = "Answer Key" if language == "en" else "Kunci Jawaban"
-    pdf.cell(0, 12, answer_title, ln=True, align="C")
+    pdf.cell(pw, 12, answer_title, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(6)
 
     pdf.set_font("Helvetica", "", 11)
     for q in questions:
-        pdf.multi_cell(0, 7, f"{q['number']}. {q.get('answer', '?')}")
+        ans = q.get("answer", "?")
+        opts = q.get("options", {})
+        ans_text = _safe(f"{q['number']}. {ans}. {opts.get(ans, '')}")
+        pdf.multi_cell(pw, 7, ans_text, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
     return bytes(pdf.output())

@@ -154,7 +154,21 @@ class Settings(BaseSettings):
         validation_alias="OLLAMA_CHAT_NUM_PREDICT",
         description="Max tokens generated per reply (lower = faster).",
     )
-    sinarmas_top_k: int = Field(default=2, description="Chroma hits for Sinarmas knowledge.")
+    sinarmas_top_k: int = Field(default=4, description="Chroma hits for Sinarmas knowledge.")
+
+    # ── Adaptive-k retrieval (Taguchi et al.) ────────────────────────────────
+    adaptive_k_enabled: bool = Field(
+        default=True,
+        description="Use adaptive-k retrieval: cut at largest similarity gap (argmax sᵢ-sᵢ₊₁).",
+    )
+    adaptive_k_max_multiplier: int = Field(
+        default=3,
+        description="Fetch pool = top_k * multiplier candidates before adaptive cut.",
+    )
+    adaptive_k_min_gap: float = Field(
+        default=0.05,
+        description="Minimum similarity gap to trigger an adaptive cut. Below this, keep all.",
+    )
     cross_course_search_max: int = Field(
         default=12,
         description="Max enrolled courses to scan when course_id is 0 (global chat).",

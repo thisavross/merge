@@ -22,6 +22,7 @@ from prompts.chatbot_prompts import build_system_prompt
 from query_routing import is_company_focused_question
 from retrieval.chroma_store import (
     chroma_search,
+    chroma_search_adaptive,
     cosine_similarity,
     ensure_course_indexed,
     global_course_retrieval,
@@ -159,6 +160,10 @@ def _retrieve_course_context(
     primary_ref_name: str | None = None
     used_db_course = False
 
+    adaptive_enabled = getattr(st, "adaptive_k_enabled", True)
+    adaptive_max_k = st.top_k * int(getattr(st, "adaptive_k_max_multiplier", 3))
+    adaptive_min_gap = float(getattr(st, "adaptive_k_min_gap", 0.05))
+
     if course_id <= 0:
         uid = int(user_id or 0)
         if uid <= 1:
@@ -171,9 +176,19 @@ def _retrieve_course_context(
     else:
         try:
             col, coursename = ensure_course_indexed(course_id, st, force_sync=False)
-            hits = chroma_search(
-                col, query_vec, n=st.top_k, where={"course_id": course_id}
-            )
+            if adaptive_enabled:
+                hits = chroma_search_adaptive(
+                    col,
+                    query_vec,
+                    max_k=adaptive_max_k,
+                    where={"course_id": course_id},
+                    min_k=1,
+                    min_gap=adaptive_min_gap,
+                )
+            else:
+                hits = chroma_search(
+                    col, query_vec, n=st.top_k, where={"course_id": course_id}
+                )
             if hits:
                 used_db_course = True
                 primary_ref_id = course_id
@@ -296,9 +311,14 @@ def answer_question(
         images_b64,
     )
 
+    _adaptive_enabled = getattr(st, "adaptive_k_enabled", True)
+    _adaptive_min_gap = float(getattr(st, "adaptive_k_min_gap", 0.05))
     sinarmas_hits = search_sinarmas(
         query_vec,
-        n=int(getattr(st, "sinarmas_top_k", 2) or 2),
+        n=int(getattr(st, "sinarmas_top_k", 4) or 4),
+        adaptive=_adaptive_enabled,
+        adaptive_multiplier=int(getattr(st, "adaptive_k_max_multiplier", 3)),
+        adaptive_min_gap=_adaptive_min_gap,
     )
 
     context_parts: list[str] = []

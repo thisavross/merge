@@ -23,16 +23,16 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       MINIO_ENDPOINT: minio:9000
       MINIO_SECURE: "false"
-      # MAMP MySQL: TCP via host.docker.internal often fails (root@localhost). Prefer socket mount below.
-      MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
-      MYSQL_UNIX_SOCKET: ${MYSQL_UNIX_SOCKET:-/var/run/mysqld/mysqld.sock}
+      # MAMP MySQL via Unix socket (avoids TCP + host-gateway issues on Apple Silicon)
+      MYSQL_HOST: ""
+      MYSQL_UNIX_SOCKET: /var/run/mysqld/mysqld.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - rag_chroma:/app/local/chatbot/rag_service/chroma_db
       - ${MOODLE_DATAROOT_HOST:-./volumes/moodle-dataroot}:/moodle/dataroot:ro
-      # MAMP socket — add /Applications/MAMP in Docker Desktop → File sharing if mount denied
-      - ${MAMP_MYSQL_SOCKET_HOST:-/Applications/MAMP/tmp/mysql/mysql.sock}:/var/run/mysqld/mysqld.sock
+      # MAMP MySQL socket — mounts Mac socket into container so pymysql can connect without TCP
+      - /Applications/MAMP/tmp/mysql/mysql.sock:/var/run/mysqld/mysqld.sock
     depends_on:
       redis:
         condition: service_healthy

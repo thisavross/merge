@@ -132,7 +132,10 @@ def _get_client() -> chromadb.PersistentClient:
     global _chroma_client
     if _chroma_client is None:
         _CHROMA_PATH.mkdir(exist_ok=True)
-        _chroma_client = chromadb.PersistentClient(path=str(_CHROMA_PATH))
+        _chroma_client = chromadb.PersistentClient(
+            path=str(_CHROMA_PATH),
+            settings=chromadb.Settings(anonymized_telemetry=False),
+        )
     return _chroma_client
 
 
@@ -256,6 +259,67 @@ def chroma_search(
         for d, doc in zip(dists, docs)
         if doc
     ]
+
+
+def _adaptive_k_cutoff(
+    scored_hits: list[tuple[float, str]],
+    *,
+    min_k: int = 1,
+    min_gap: float = 0.05,
+) -> list[str]:
+    """Apply Taguchi et al. adaptive-k: k = argmax(sᵢ - sᵢ₊₁).
+
+    Finds the index of the largest drop in similarity scores and cuts there.
+    Falls back to returning all hits when no gap exceeds min_gap.
+
+    Args:
+        scored_hits: list of (similarity, chunk) sorted descending by similarity.
+        min_k:       minimum number of chunks to always keep.
+        min_gap:     minimum gap size to be considered a meaningful drop.
+    """
+    if len(scored_hits) <= min_k:
+        return [doc for _, doc in scored_hits]
+
+    scores = [s for s, _ in scored_hits]
+    gaps = [scores[i] - scores[i + 1] for i in range(len(scores) - 1)]
+
+    max_gap = max(gaps)
+    if max_gap < min_gap:
+        # No significant gap — return all candidates
+        return [doc for _, doc in scored_hits]
+
+    # argmax gives the index BEFORE the big drop; cut_at is how many to keep
+    cut_at = gaps.index(max_gap) + 1
+    cut_at = max(cut_at, min_k)
+
+    print(f"[AdaptiveK] gap={max_gap:.4f} at position {cut_at}/{len(scored_hits)} "
+          f"scores={[round(s, 3) for s in scores]}")
+    return [doc for _, doc in scored_hits[:cut_at]]
+
+
+def chroma_search_adaptive(
+    col: chromadb.Collection,
+    query_embedding: list[float],
+    max_k: int,
+    *,
+    where: dict | None = None,
+    min_k: int = 1,
+    min_gap: float = 0.05,
+) -> list[str]:
+    """Adaptive-k search based on Taguchi et al.
+
+    Fetches up to max_k candidates with scores, then cuts at the index of the
+    largest similarity gap (argmax sᵢ - sᵢ₊₁).  This avoids padding the prompt
+    with low-relevance chunks that push useful content out of the context window.
+
+    Falls back to all max_k chunks when no significant gap is found.
+    """
+    scored: list[tuple[float, str]] = chroma_search(  # type: ignore[assignment]
+        col, query_embedding, max_k, where=where, include_scores=True
+    )
+    if not scored:
+        return []
+    return _adaptive_k_cutoff(scored, min_k=min_k, min_gap=min_gap)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

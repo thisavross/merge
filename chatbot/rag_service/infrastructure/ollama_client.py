@@ -52,8 +52,8 @@ from domain.guardrails import (
 )
 
 
-def _client(timeout: float = 300.0) -> httpx.Client:
-    """Default 300s — summarize with large context can exceed 120s on CPU."""
+def _client(timeout: float = 660.0) -> httpx.Client:
+    """Default 660s — quiz/summary generation on CPU can exceed 7 minutes."""
     return httpx.Client(timeout=timeout)
 
 

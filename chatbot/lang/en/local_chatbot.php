@@ -85,3 +85,5 @@ $string['privacy:metadata:local_chatbot_room'] = 'Stores chat session titles per
 $string['privacy:metadata:local_chatbot_room:title'] = 'Chat session title (usually first question).';
 $string['privacy:metadata:local_chatbot_room:timemodified'] = 'Last activity in the chat session.';
 $string['privacy:metadata:local_chatbot_message:roomid'] = 'Chat session the message belongs to.';
+$string['download_pdf'] = 'Download PDF';
+$string['pdf_error'] = 'Could not generate PDF. Please try again.';

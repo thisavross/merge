@@ -103,7 +103,7 @@ _DETAILED_SIGNALS = (
 )
 
 
-_SUMMARIZE_NUM_PREDICT_CAP = 1500
+_SUMMARIZE_NUM_PREDICT_CAP = 400
 
 
 def _looks_like_template_output(text: str) -> bool:
@@ -226,16 +226,21 @@ def generate_course_summary(
     system = build_course_summary_system_prompt(coursename, language=language)
 
     # num_predict varies by style
-    _style_predict = {"brief": 400, "standard": 1200, "detailed": 1500}
+    _style_predict = {"brief": 150, "standard": 300, "detailed": 400}
     num_predict = min(
         _style_predict.get(style, int(getattr(settings, "ollama_summarize_num_predict", 1200) or 1200)),
         _SUMMARIZE_NUM_PREDICT_CAP,
     )
 
-    excerpt_budget = summarize_excerpt_token_budget(settings, output_tokens=num_predict)
+    # Hard cap context to 600 tokens (~2400 chars) to stay within CPU inference limits.
+    _CONTEXT_TOKEN_HARD_CAP = 600
+    excerpt_budget = min(
+        summarize_excerpt_token_budget(settings, output_tokens=num_predict),
+        _CONTEXT_TOKEN_HARD_CAP,
+    )
 
     print(f"[Summarize] style={style} | num_predict={num_predict} | num_ctx={settings.ollama_chat_num_ctx}")
-    print(f"[Summarize] excerpt token budget={excerpt_budget}")
+    print(f"[Summarize] excerpt token budget={excerpt_budget} (hard-capped at {_CONTEXT_TOKEN_HARD_CAP})")
 
     def _call_llm(ctx: str) -> ChatCompletionResult:
         user = build_course_summary_user_message(
@@ -271,7 +276,10 @@ def generate_course_summary(
             metrics_out["llm_ms"] = round(prev_ms + float(llm.llm_ms or 0), 2)
         return llm.text
 
-    trimmed = trim_excerpt_context_for_llm(context, settings, output_tokens=num_predict)
+    trimmed = trim_excerpt_context_for_llm(
+        context, settings, output_tokens=num_predict,
+        budget_tokens_override=excerpt_budget,
+    )
     raw = _accumulate_llm(_call_llm(trimmed))
 
     print(f"[Summarize] raw reply = {len(raw)} chars | preview: {raw[:120]!r}")
@@ -283,7 +291,7 @@ def generate_course_summary(
         result = sanitize_course_summary(prettify_reply(raw), max_bullets_per_section=8, max_chars=5000)
 
     if not result or len(result.strip()) < 20:
-        half_budget = max(2000, excerpt_budget // 2)
+        half_budget = max(200, excerpt_budget // 2)
         tighter = trim_excerpt_context_for_llm(
             context, settings,
             output_tokens=num_predict,

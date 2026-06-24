@@ -4,11 +4,21 @@
 
 require_once(__DIR__ . '/../../config.php');
 require_login();
-require_sesskey();
 
-$raw = file_get_contents('php://input');
-$body = json_decode($raw, true);
-if (!$body || empty($body['quiz_json'])) {
+// sesskey may arrive as a query-string param (GET) or inside the JSON body.
+// Normalise it into $_POST so require_sesskey() can find it.
+if (empty($_POST['sesskey']) && empty($_GET['sesskey'])) {
+    $raw = file_get_contents('php://input');
+    $body = json_decode($raw, true) ?: [];
+    if (!empty($body['sesskey'])) {
+        $_POST['sesskey'] = $body['sesskey'];
+    }
+} else {
+    $raw = file_get_contents('php://input');
+    $body = json_decode($raw, true) ?: [];
+}
+require_sesskey();
+if (empty($body) || empty($body['quiz_json'])) {
     http_response_code(400);
     exit('No quiz data');
 }
@@ -36,6 +46,12 @@ if ($httpcode !== 200 || !$pdf) {
     exit('PDF generation failed');
 }
 
+// 'inline' mode lets the browser render the PDF in an iframe (preview).
+// 'attachment' mode (default) triggers a file download.
+$inline = !empty($body['inline']);
+$disposition = $inline ? 'inline' : 'attachment';
+
 header('Content-Type: application/pdf');
-header('Content-Disposition: attachment; filename="quiz.pdf"');
+header('Content-Disposition: ' . $disposition . '; filename="quiz.pdf"');
+header('Content-Length: ' . strlen($pdf));
 echo $pdf;

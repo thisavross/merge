@@ -610,7 +610,9 @@ def process_pdf(pdf_path: str, batch_size: int = 3) -> dict:
                         absolute_page = batch_start_page + current_page
 
                         try:
-                            page_height_pt = get_pdf_page_height(pdf_path, absolute_page)
+                            page_height_pt = get_pdf_page_height(
+                                pdf_path, absolute_page
+                            )
                         except Exception:
                             traceback.print_exc()
                             continue

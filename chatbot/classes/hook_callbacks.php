@@ -130,7 +130,18 @@ class hook_callbacks {
             'confirmdeleteall' => get_string('history_delete_all_confirm', 'local_chatbot'),
             'deletefailed' => get_string('history_delete_failed', 'local_chatbot'),
             'emptyreply' => get_string('error_empty_reply', 'local_chatbot'),
+            'downloadpdf' => get_string('download_pdf', 'local_chatbot'),
+            'pdferror'    => get_string('pdf_error', 'local_chatbot'),
         ];
+
+        // Course name and language for PDF generation.
+        if ($courseid > SITEID) {
+            $course = get_course($courseid);
+            $strings['coursename'] = $course->fullname;
+        } else {
+            $strings['coursename'] = format_string(get_site()->fullname);
+        }
+        $strings['language'] = current_language();
 
         $PAGE->requires->css('/local/chatbot/styles.css');
         $PAGE->requires->js_call_amd('local_chatbot/popup', 'init', [$welcome, $courseid, $strings]);

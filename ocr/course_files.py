@@ -19,10 +19,10 @@ def extract_course_file_text(
     vision_ocr: VisionOcrFn | None = None,
 ) -> str:
     """
-    Best-effort plain text for a course-attached file.
+      Best-effort plain text for a course-attached file.
 
-    If native PDF text is empty (scanned PDFs), renders pages and calls vision_ocr
-  when provided.
+      If native PDF text is empty (scanned PDFs), renders pages and calls vision_ocr
+    when provided.
     """
     extracted = ""
     try:

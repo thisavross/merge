@@ -100,7 +100,9 @@ def load_course_plaintext(
 
             if not skip_metadata:
                 parts.append(f"Course full name: {coursefullname}")
-                parts.append(f"Short name: {_strip_html(str(row.get('shortname') or ''))}")
+                parts.append(
+                    f"Short name: {_strip_html(str(row.get('shortname') or ''))}"
+                )
                 summary = row.get("summary") or ""
                 if summary:
                     parts.append(f"Course summary: {_strip_html(str(summary))}")
@@ -116,7 +118,9 @@ def load_course_plaintext(
 
                 for sec in cur.fetchall():
                     sn = sec.get("name") or f"Section {sec.get('section')}"
-                    parts.append(f"Section {sec.get('section')}: {_strip_html(str(sn))}")
+                    parts.append(
+                        f"Section {sec.get('section')}: {_strip_html(str(sn))}"
+                    )
                     if sec.get("summary"):
                         parts.append(_strip_html(str(sec["summary"])))
 
@@ -151,9 +155,16 @@ def load_course_plaintext(
 
             if (getattr(settings, "moodle_dataroot", "") or "").strip():
                 max_files = int(getattr(settings, "course_file_max_files", 60) or 60)
-                max_bytes = int(getattr(settings, "course_file_max_bytes", 8 * 1024 * 1024) or (8 * 1024 * 1024))
-                max_chars_per_file = int(getattr(settings, "course_file_max_chars_per_file", 40000) or 40000)
-                max_total_chars = int(getattr(settings, "course_file_max_total_chars", 200000) or 200000)
+                max_bytes = int(
+                    getattr(settings, "course_file_max_bytes", 8 * 1024 * 1024)
+                    or (8 * 1024 * 1024)
+                )
+                max_chars_per_file = int(
+                    getattr(settings, "course_file_max_chars_per_file", 40000) or 40000
+                )
+                max_total_chars = int(
+                    getattr(settings, "course_file_max_total_chars", 200000) or 200000
+                )
 
                 file_parts: list[str] = []
                 extracted_chars = 0
@@ -186,7 +197,11 @@ def load_course_plaintext(
                 cur.execute(sql_module_ctx, (course_id, max_files))
                 file_rows.extend(cur.fetchall())
 
-                file_rows = sorted(file_rows, key=lambda r: int(r.get("timemodified") or 0), reverse=True)
+                file_rows = sorted(
+                    file_rows,
+                    key=lambda r: int(r.get("timemodified") or 0),
+                    reverse=True,
+                )
                 seen_ids: set[int] = set()
 
                 for fr in file_rows:
@@ -256,11 +271,15 @@ def load_course_plaintext(
                     if extracted.strip():
                         extracted = extracted.strip()
                         if len(extracted) > max_chars_per_file:
-                            extracted = extracted[:max_chars_per_file] + "\n\n[...truncated...]"
+                            extracted = (
+                                extracted[:max_chars_per_file] + "\n\n[...truncated...]"
+                            )
                         file_parts.append(f"{header}\n{extracted}")
                         extracted_chars += len(extracted)
                     else:
-                        file_parts.append(f"{header}\n[No extracted text for this file]")
+                        file_parts.append(
+                            f"{header}\n[No extracted text for this file]"
+                        )
 
                     collected_files += 1
                     tm_max = max(tm_max, tm)
@@ -275,7 +294,9 @@ def load_course_plaintext(
         conn.close()
 
 
-def list_enrolled_course_ids(settings: Settings, user_id: int, *, limit: int = 48) -> list[int]:
+def list_enrolled_course_ids(
+    settings: Settings, user_id: int, *, limit: int = 48
+) -> list[int]:
     """Course ids the user is actively enrolled in (visible courses only)."""
     if user_id <= 1:
         return []

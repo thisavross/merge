@@ -102,20 +102,41 @@ class fastapi_client {
         }
 
         $curl = new \curl(['ignoresecurity' => true]);
-        $curl->setopt(['CURLOPT_TIMEOUT' => 300]);
+        $curl->setopt(['CURLOPT_TIMEOUT' => 600]);
         $curl->setHeader('Content-Type: application/json; charset=utf-8');
         if ($secret !== '') {
             $curl->setHeader('X-Chatbot-Secret: ' . $secret);
         }
 
-        $response = $curl->post($url, $json);
-        $info = $curl->get_info();
-        $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
+        // Attempt up to 2 times — first query after container start can fail while
+        // Ollama is still loading the model into memory (cold-start).
+        $maxattempts = 2;
+        $response = false;
+        $httpcode  = 0;
+        for ($attempt = 1; $attempt <= $maxattempts; $attempt++) {
+            $response = $curl->post($url, $json);
+            $info     = $curl->get_info();
+            $httpcode = isset($info['http_code']) ? (int)$info['http_code'] : 0;
+            if ($response !== false && $response !== '' && $httpcode < 400) {
+                break; // success — no need to retry
+            }
+            if ($attempt < $maxattempts) {
+                sleep(3); // brief pause before retry
+                $curl = new \curl(['ignoresecurity' => true]);
+                $curl->setopt(['CURLOPT_TIMEOUT' => 600]);
+                $curl->setHeader('Content-Type: application/json; charset=utf-8');
+                if ($secret !== '') {
+                    $curl->setHeader('X-Chatbot-Secret: ' . $secret);
+                }
+            }
+        }
+
         if ($response === false || $response === '' || $httpcode >= 400) {
             return [
-                'reply' => '',
-                'error' => get_string('error_fastapi_http', 'local_chatbot'),
-                'quiz_json' => '',
+                'reply'             => '',
+                'thinking'          => '',
+                'error'             => get_string('error_fastapi_http', 'local_chatbot'),
+                'quiz_json'         => '',
                 'quiz_ready_for_pdf' => false,
             ];
         }
@@ -123,27 +144,30 @@ class fastapi_client {
         $data = json_decode($response, true);
         if (!is_array($data)) {
             return [
-                'reply' => '',
-                'error' => get_string('error_fastapi_json', 'local_chatbot'),
-                'quiz_json' => '',
+                'reply'             => '',
+                'thinking'          => '',
+                'error'             => get_string('error_fastapi_json', 'local_chatbot'),
+                'quiz_json'         => '',
                 'quiz_ready_for_pdf' => false,
             ];
         }
 
         if (!empty($data['error'])) {
             return [
-                'reply' => '',
-                'error' => clean_param((string)$data['error'], PARAM_TEXT),
-                'quiz_json' => '',
+                'reply'             => '',
+                'thinking'          => '',
+                'error'             => clean_param((string)$data['error'], PARAM_TEXT),
+                'quiz_json'         => '',
                 'quiz_ready_for_pdf' => false,
             ];
         }
 
         $reply = isset($data['reply']) ? (string)$data['reply'] : '';
         return [
-            'reply' => $reply,
-            'error' => '',
-            'quiz_json' => isset($data['quiz_json']) ? (string)$data['quiz_json'] : '',
+            'reply'             => $reply,
+            'thinking'          => isset($data['thinking']) ? (string)$data['thinking'] : '',
+            'error'             => '',
+            'quiz_json'         => isset($data['quiz_json']) ? (string)$data['quiz_json'] : '',
             'quiz_ready_for_pdf' => !empty($data['quiz_ready_for_pdf']),
         ];
     }

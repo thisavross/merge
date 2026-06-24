@@ -163,7 +163,7 @@ def _vision_model_name() -> str:
     return (
         os.getenv("OLLAMA_EXTRACT_VISION_MODEL")
         or os.getenv("OLLAMA_VISION_MODEL")
-        or "qwen25vl-ai2d-vision"
+        or "qwen25vl-ctx:latest"
     )
 
 
@@ -179,7 +179,6 @@ _ollama_client_host: str | None = None
 # ============================================================
 # Ollama management
 # ============================================================
-
 
 def ensure_ollama_running() -> bool:
     base_url = _ollama_base_url()
@@ -297,9 +296,8 @@ Return a detailed explanation.
 """
 
 
-
 def extract_with_qwenvl(
-    image_path: str, task: str = "table", num_ctx: int = 8192
+    image_path: str, task: str = "table", num_ctx: int = 4096
 ) -> str | None:
     """
     Unified QwenVL extraction.
@@ -336,7 +334,8 @@ def extract_with_qwenvl(
         response = client.chat(
             model=_vision_model_name(),
             messages=[{"role": "user", "content": prompt, "images": [image_path]}],
-            options={"temperature": 0, "num_ctx": num_ctx},
+            options={"temperature": 0, "num_ctx": 4096},
+            keep_alive="30m",
         )
 
         result = response["message"]["content"].strip()
@@ -358,6 +357,7 @@ def extract_with_qwenvl(
         print(f"[Vision] error: {e}")
 
         return None
+
 
 def markdown_table_to_text(markdown: str) -> str:
 

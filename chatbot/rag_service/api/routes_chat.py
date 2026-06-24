@@ -42,7 +42,9 @@ def _effective_course_id(body: ChatRequest) -> int:
 
 def _check_secret(x_chatbot_secret: str | None) -> None:
     if settings.chatbot_secret and (x_chatbot_secret or "") != settings.chatbot_secret:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-Chatbot-Secret")
+        raise HTTPException(
+            status_code=401, detail="Invalid or missing X-Chatbot-Secret"
+        )
 
 
 def _finish(
@@ -79,6 +81,11 @@ def chat(
     x_chatbot_secret: str | None = Header(default=None, alias="X-Chatbot-Secret"),
 ) -> ChatResponse:
     _check_secret(x_chatbot_secret)
+    print("=== CHAT DEBUG ===")
+    print("USER ID:", body.user_id)
+    print("COURSE ID:", body.course_id)
+    print("PAGE COURSE ID:", body.page_course_id)
+    print("QUESTION:", body.question)
 
     t0 = start_timer()
     llm_metrics: dict[str, Any] = {}
@@ -119,7 +126,9 @@ def chat(
                         quiz_json=quiz_to_json(pending_questions),
                     )
 
-                _, coursename = ensure_course_indexed(course_id, settings, force_sync=True)
+                _, coursename = ensure_course_indexed(
+                    course_id, settings, force_sync=True
+                )
                 context = retrieve_quiz_context(
                     course_id,
                     coursename,
@@ -242,8 +251,10 @@ def chat(
             )
 
         atts = (
-            [{"name": a.name, "mime": a.mime, "data_base64": a.data_base64}
-             for a in body.attachments]
+            [
+                {"name": a.name, "mime": a.mime, "data_base64": a.data_base64}
+                for a in body.attachments
+            ]
             if body.attachments
             else None
         )
@@ -251,7 +262,9 @@ def chat(
             course_id,
             question,
             atts,
-            page_course_id=course_id if course_id > 0 else int(body.page_course_id or 0),
+            page_course_id=course_id
+            if course_id > 0
+            else int(body.page_course_id or 0),
             user_id=body.user_id,
             room_id=int(body.room_id or 0),
             moodle_wwwroot=(body.moodle_wwwroot or "").strip(),
@@ -269,7 +282,9 @@ def delete_chat_history(body: ClearHistoryRequest) -> dict:
     if not body.user_id:
         raise HTTPException(status_code=400, detail="user_id required")
     if not body.room_id:
-        raise HTTPException(status_code=400, detail="room_id required for single-room delete")
+        raise HTTPException(
+            status_code=400, detail="room_id required for single-room delete"
+        )
 
     deleted = clear_history(body.user_id, body.room_id)
     return {"deleted": deleted, "user_id": body.user_id, "room_id": body.room_id}
