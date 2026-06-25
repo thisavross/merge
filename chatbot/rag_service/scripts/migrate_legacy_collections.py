@@ -33,15 +33,17 @@ import re
 import sys
 from pathlib import Path
 
+import chromadb
+from config import Settings, settings
 # Make sure the service modules are importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import chromadb
 
-CHROMA_PATH = Path(__file__).resolve().parents[1] / "chroma_db"
-
-# Collections that are part of the canonical 3-collection design.
-KEEP_COLLECTIONS = {"moodle_chat", "moodle_course", "sinarmas_knowledge"}
+KEEP_COLLECTIONS = {
+    "moodle_chat",
+    "moodle_course",
+    "sinarmas_knowledge"
+}
 
 # Pattern for old per-course collections.
 LEGACY_COURSE_PATTERN = re.compile(r"^course_\d+$")
@@ -133,11 +135,11 @@ def _copy_collection(
 
 
 def migrate(dry_run: bool = False, delete_legacy: bool = False) -> None:
-    if not CHROMA_PATH.exists():
-        print("[ERROR] chroma_db/ not found. Nothing to migrate.")
-        sys.exit(1)
 
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    client = chromadb.HttpClient(
+        host=Settings.chroma_host,
+        port=Settings.chroma_port,
+    )
 
     # Resolve canonical content collection name from .env / config.
     try:

@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 _CHROMA_PATH = Path(__file__).resolve().parents[1] / "chroma_db"
 
 # ── Singleton client (one per process) ───────────────────────────────────────
-_chroma_client: chromadb.PersistentClient | None = None
+_chroma_client: chromadb.HttpClient | None = None
 
 # ── In-process course freshness cache: {course_id: timemodified} ─────────────
 # Avoids hitting MySQL on every request just to check whether the course changed.
@@ -127,15 +127,15 @@ def _resolve_course_meta(st: Settings, course_id: int) -> tuple[str, int]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Client management
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _get_client() -> chromadb.PersistentClient:
+def _get_client():
     global _chroma_client
+
     if _chroma_client is None:
-        _CHROMA_PATH.mkdir(exist_ok=True)
-        _chroma_client = chromadb.PersistentClient(
-            path=str(_CHROMA_PATH),
-            settings=chromadb.Settings(anonymized_telemetry=False),
+        _chroma_client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
         )
+
     return _chroma_client
 
 

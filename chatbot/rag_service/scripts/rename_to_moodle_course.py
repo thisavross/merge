@@ -17,6 +17,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from config import Settings
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import chromadb
@@ -60,7 +62,10 @@ def run(*, dry_run: bool) -> None:
         print("[ERROR] chroma_db/ not found.")
         sys.exit(1)
 
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    client = chromadb.HttpClient(
+        host=Settings.chroma_host,
+        port=Settings.chroma_port,
+    )
     names = {c.name for c in client.list_collections()}
     print(f"Before ({len(names)}): {sorted(names)}")
     print(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}\n")
@@ -71,14 +76,24 @@ def run(*, dry_run: bool) -> None:
             dst = client.get_or_create_collection(TARGET_LEARNING, metadata=COSINE_META)
             src = client.get_collection(SOURCE_LEARNING)
             copied = _copy_all(src, dst, dry_run=False)
-            print(f"[OK] Copied {copied} entries: {SOURCE_LEARNING!r} → {TARGET_LEARNING!r}")
+            print(
+                f"[OK] Copied {copied} entries: {SOURCE_LEARNING!r} → {TARGET_LEARNING!r}"
+            )
         else:
             src = client.get_collection(SOURCE_LEARNING)
-            _copy_all(src, client.get_or_create_collection(TARGET_LEARNING, metadata=COSINE_META), dry_run=True)
+            _copy_all(
+                src,
+                client.get_or_create_collection(TARGET_LEARNING, metadata=COSINE_META),
+                dry_run=True,
+            )
     elif TARGET_LEARNING in names:
-        print(f"[OK] {TARGET_LEARNING!r} already exists (no {SOURCE_LEARNING!r} to copy).")
+        print(
+            f"[OK] {TARGET_LEARNING!r} already exists (no {SOURCE_LEARNING!r} to copy)."
+        )
     else:
-        print(f"[WARN] Neither {SOURCE_LEARNING!r} nor {TARGET_LEARNING!r} found; learning collection empty until re-index.")
+        print(
+            f"[WARN] Neither {SOURCE_LEARNING!r} nor {TARGET_LEARNING!r} found; learning collection empty until re-index."
+        )
 
     # ── 2. Delete everything not in KEEP ─────────────────────────────────────
     to_delete = sorted(names - KEEP)
@@ -92,7 +107,9 @@ def run(*, dry_run: bool) -> None:
         print(f"\nCollections to delete ({len(to_delete)}): {to_delete}")
         for name in to_delete:
             if dry_run:
-                print(f"  Would delete {name!r} ({client.get_collection(name).count()} entries)")
+                print(
+                    f"  Would delete {name!r} ({client.get_collection(name).count()} entries)"
+                )
             else:
                 client.delete_collection(name)
                 print(f"  Deleted {name!r}")
@@ -107,7 +124,9 @@ def run(*, dry_run: bool) -> None:
         if missing:
             print(f"[WARN] Missing canonical collections: {missing}")
     else:
-        print("[DONE] Exactly 3 collections: moodle_chat, moodle_course, sinarmas_knowledge")
+        print(
+            "[DONE] Exactly 3 collections: moodle_chat, moodle_course, sinarmas_knowledge"
+        )
 
 
 if __name__ == "__main__":

@@ -1,13 +1,34 @@
-# Smart LMS chatbot stack: RAG (FastAPI), Ollama, Redis, MinIO
-#
-# From repo root (moodle500/):
-#   docker compose -f local/chatbot/docker/docker-compose.yml --env-file local/chatbot/docker/.env up -d --build
-#
-# Moodle stays on the host (MAMP). Set plugin fastapiurl to http://127.0.0.1:8787
-
 name: moodle-chatbot
 
 services:
+  # ============ NEW: ChromaDB Service ============
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: moodle-chatbot-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_HOST_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_PORT=8000
+      - CHROMA_SERVER_GRPC_MAX_MESSAGE_LENGTH=104857600  # 100MB for large embeddings
+      - CHROMA_OTEL_EXPORTER_OTLP_ENDPOINT=
+      - CHROMA_OTEL_EXPORTER_OTLP_INSECURE=
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============ Updated RAG Service with ChromaDB dependency ============
   rag:
     build:
       context: ../../..
@@ -23,16 +44,20 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       MINIO_ENDPOINT: minio:9000
       MINIO_SECURE: "false"
-      # MAMP MySQL via Unix socket (avoids TCP + host-gateway issues on Apple Silicon)
-      MYSQL_HOST: ""
-      MYSQL_UNIX_SOCKET: /var/run/mysqld/mysqld.sock
+
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      CHROMA_DB_URL: http://chromadb:8000
+      CHROMA_PERSIST_DIR: /app/local/chatbot/rag_service/chroma_db
+
+      MYSQL_HOST: host.docker.internal
+      MYSQL_PORT: 3306
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - rag_chroma:/app/local/chatbot/rag_service/chroma_db
       - ${MOODLE_DATAROOT_HOST:-./volumes/moodle-dataroot}:/moodle/dataroot:ro
       # MAMP MySQL socket — mounts Mac socket into container so pymysql can connect without TCP
-      - /Applications/MAMP/tmp/mysql/mysql.sock:/var/run/mysqld/mysqld.sock
+      #- /Applications/MAMP/tmp/mysql/mysql.sock:/var/run/mysqld/mysqld.sock
     depends_on:
       redis:
         condition: service_healthy
@@ -47,6 +72,9 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
       interval: 30s
@@ -68,6 +96,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   minio:
     image: minio/minio:latest
@@ -87,6 +123,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   minio-init:
     image: minio/mc:latest
@@ -104,6 +148,11 @@ services:
       mc mb -p local/$$MINIO_BUCKET 2>/dev/null || true &&
       echo 'MinIO bucket ready:' $$MINIO_BUCKET
       "
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
   ollama:
     image: ollama/ollama:latest
@@ -118,6 +167,9 @@ services:
         limits:
           cpus: '3.5'
           memory: 6G
+        reservations:
+          cpus: '2.0'
+          memory: 2G
     healthcheck:
       # ollama/ollama image has no curl; use the bundled CLI
       test: ["CMD", "ollama", "list"]
@@ -144,9 +196,17 @@ services:
     entrypoint: ["/bin/sh", "/ollama-init.sh"]
     profiles:
       - init-models
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
 volumes:
-  rag_chroma:
+  chroma_data:  # NEW: dedicated volume for ChromaDB
   redis_data:
   minio_data:
   ollama_data:

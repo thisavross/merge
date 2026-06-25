@@ -44,7 +44,9 @@ COLLECTION_NAME = "sinarmas_knowledge"
 #     Path(__file__).resolve().parents[1] / r"chatbot\rag_service\ocr_sample.pdf"
 # )
 # Use an absolute path to your PDF
-LOCAL_PDF_PATH = Path(r"C:\Users\asus\Documents\aiocrchatbotplugin\chatbot\rag_service\ocr_sample.pdf")
+LOCAL_PDF_PATH = Path(
+    r"C:\Users\asus\Documents\aiocrchatbotplugin\chatbot\rag_service\ocr_sample.pdf"
+)
 
 
 def load_all_pdf_texts() -> list[tuple[str, str]]:
@@ -125,7 +127,10 @@ def build() -> None:
     print(f"[INFO] Total: {total} chunks from {len(pdf_texts)} PDF(s)")
 
     CHROMA_PATH.mkdir(exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    client = chromadb.HttpClient(
+        host=settings.chroma_host,
+        port=settings.chroma_port,
+    )
 
     # Delete and recreate with cosine similarity
     existing = [c.name for c in client.list_collections()]

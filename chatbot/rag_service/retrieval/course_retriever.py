@@ -14,6 +14,7 @@ not of Chroma state.
 from __future__ import annotations
 import os
 import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import Settings, settings
 from infrastructure.ollama_client import get_embedding
@@ -28,7 +29,7 @@ from retrieval.chroma_store import (
     _get_chat_collection,
     _get_course_documents,
 )
- 
+
 
 # Sentinel used by trim_excerpt_context_for_llm to locate the excerpt body.
 _EXCERPT_MARKER = "=== LEARNING MATERIAL (excerpts) ===\n"
@@ -37,6 +38,7 @@ _EXCERPT_MARKER = "=== LEARNING MATERIAL (excerpts) ===\n"
 # ─────────────────────────────────────────────────────────────────────────────
 # Token-budget helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def summarize_excerpt_token_budget(
     st: Settings | None = None,
@@ -85,8 +87,9 @@ def trim_excerpt_context_for_llm(
     budget_tokens = (
         int(budget_tokens_override)
         if budget_tokens_override is not None
-        else summarize_excerpt_token_budget(st, reserve_tokens=reserve_tokens,
-                                             output_tokens=output_tokens)
+        else summarize_excerpt_token_budget(
+            st, reserve_tokens=reserve_tokens, output_tokens=output_tokens
+        )
     )
     budget_chars = budget_tokens * 4
 
@@ -110,7 +113,7 @@ def trim_excerpt_context_for_llm(
         used += extra
 
     if not kept and body:
-        kept = [body[:max(500, budget_chars - len(header))]]
+        kept = [body[: max(500, budget_chars - len(header))]]
 
     omitted = len(parts) - len(kept)
     note = (
@@ -131,6 +134,7 @@ def trim_excerpt_context_for_llm(
 # Course link footer (injected after the answer when the user is on the
 # dashboard and the best matching course is not the current page)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def course_refer_footer(
     *,
@@ -162,6 +166,7 @@ def course_refer_footer(
 # ─────────────────────────────────────────────────────────────────────────────
 # Core retrieval — used by quiz, summarize, and content-heavy tasks
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def retrieve_course_content_context(
     course_id: int,
@@ -198,8 +203,10 @@ def retrieve_course_content_context(
         f"User request: {(user_question or 'course content').strip()}"
     )
     q_vec = get_embedding(st, retrieval_query)
-    max_ctx = max_chunks if max_chunks is not None else int(
-        getattr(st, "quiz_context_chunks", 10) or 10
+    max_ctx = (
+        max_chunks
+        if max_chunks is not None
+        else int(getattr(st, "quiz_context_chunks", 10) or 10)
     )
 
     ranked = rank_chunks_for_quiz(
@@ -254,7 +261,9 @@ def retrieve_quiz_context(
         "=== LEARNING MATERIAL (excerpts) ===\n"
     )
     return retrieve_course_content_context(
-        course_id, coursename, st,
+        course_id,
+        coursename,
+        st,
         user_question=user_question,
         max_chunks=int(getattr(st, "quiz_context_chunks", 10) or 10),
         allow_chat_fallback=True,
@@ -287,11 +296,14 @@ def retrieve_summarize_context(
     chunks = get_learning_chunks_for_summary(course_id, st)
 
     if not chunks:
-        print(f"[Summarize] No learning chunks for course_id={course_id}, falling back to moodle_chat")
+        print(
+            f"[Summarize] No learning chunks for course_id={course_id}, falling back to moodle_chat"
+        )
         chat_col = _get_chat_collection(st)
         all_chat = _get_course_documents(chat_col, course_id, include_embeddings=False)
         chunks = [
-            doc for doc, _ in all_chat
+            doc
+            for doc, _ in all_chat
             if doc and str(doc).strip() and len(str(doc).split()) >= 20
         ]
 

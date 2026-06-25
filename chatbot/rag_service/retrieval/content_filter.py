@@ -1,6 +1,7 @@
 """Classify course text chunks for quiz vs general chat indexing."""
 
 
+
 def is_assignment_or_instruction_chunk(text: str) -> bool:
     """
     True when a chunk is lab/assignment framing, not teachable subject matter.

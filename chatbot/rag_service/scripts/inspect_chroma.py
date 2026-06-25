@@ -12,21 +12,22 @@ How to run:
 from __future__ import annotations
 
 from pathlib import Path
-
+from config import Settings
 import chromadb
 
 CHROMA_PATH = Path(__file__).resolve().parents[1] / "chroma_db"
 COLLECTIONS = ("moodle_chat", "moodle_course", "sinarmas_knowledge")
 SHOW_FIRST_N = 20
 SEARCH_QUERY = "summarize course"
-SHOW_COLLECTION = "moodle_course"   # collection to preview
-SHOW_COURSE_ID = 4                   # filter course tertentu, 0 = semua
-SHOW_FIRST_N = 10                    # berapa chunk yang ditampilkan
-SHOW_FULL_CONTENT = True             # True = tampilkan full teks chunk
-SEARCH_QUERY = ""                    # kosongkan dulu
+SHOW_COLLECTION = "moodle_course"  # collection to preview
+SHOW_COURSE_ID = 4  # filter course tertentu, 0 = semua
+SHOW_FIRST_N = 10  # berapa chunk yang ditampilkan
+SHOW_FULL_CONTENT = True  # True = tampilkan full teks chunk
+SEARCH_QUERY = ""  # kosongkan dulu
 SEARCH_COURSE_ID = 0
 
-def _preview_collection(client: chromadb.PersistentClient, name: str) -> None:
+
+def _preview_collection(client, name: str) -> None:
     try:
         col = client.get_collection(name)
     except Exception:
@@ -72,12 +73,13 @@ def _preview_collection(client: chromadb.PersistentClient, name: str) -> None:
 
 
 def main() -> None:
-    if not CHROMA_PATH.exists():
-        print("[ERROR] chroma_db/ not found. Index a course or run build_sinarmas_index.py.")
-        return
 
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    print(f"Chroma path: {CHROMA_PATH}\n")
+    client = chromadb.HttpClient(
+        host=Settings.chroma_host,
+        port=Settings.chroma_port,
+    )
+
+    print(f"Chroma server: {Settings.chroma_host}:{Settings.chroma_port}\n")
 
     print("Collections:")
     for name in client.list_collections():
