@@ -20,7 +20,11 @@ pull() {
     return 0
   fi
   echo "[ollama-init] Pulling ${model}..."
-  ollama pull "$model"
+  if ollama pull "$model" 2>&1; then
+    echo "[ollama-init] OK: ${model}"
+  else
+    echo "[ollama-init] SKIP: ${model} not in registry (import manually via ollama create)"
+  fi
 }
 
 export OLLAMA_HOST

@@ -51,13 +51,15 @@ services:
       CHROMA_PERSIST_DIR: /app/local/chatbot/rag_service/chroma_db
 
       MYSQL_HOST: host.docker.internal
+      #irene; MYSQL_HOST: ""
       MYSQL_PORT: 3306
+      MYSQL_UNIX_SOCKET: /var/run/mysqld/mysqld.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${MOODLE_DATAROOT_HOST:-./volumes/moodle-dataroot}:/moodle/dataroot:ro
       # MAMP MySQL socket — mounts Mac socket into container so pymysql can connect without TCP
-      #- /Applications/MAMP/tmp/mysql/mysql.sock:/var/run/mysqld/mysqld.sock
+      #irene; - /Applications/MAMP/tmp/mysql/mysql.sock:/var/run/mysqld/mysqld.sock
     depends_on:
       redis:
         condition: service_healthy
